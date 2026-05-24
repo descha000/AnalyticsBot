@@ -12,8 +12,12 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from data.nhl_client import PlayerRecentForm
 
 import anthropic
 from dotenv import load_dotenv
@@ -59,6 +63,8 @@ class AnalyticsPayload:
     player_picks: list[PlayerPoissonResult]         # pre slot only
     actual_result: GameResult | None                # post slot only
     model_snapshot: dict | None                     # post slot: pre-event prediction
+    # optional enrichments (pre slot); keyed by player_id
+    player_recent_form: dict[str, "PlayerRecentForm"] = field(default_factory=dict)
 
 
 @dataclass
@@ -149,17 +155,18 @@ def _prompt_preview(p: AnalyticsPayload) -> str:
 
 def _prompt_pre(p: AnalyticsPayload) -> str:
     e, po = p.edge, p.poisson
-    picks_lines = "\n".join(
-        f"  - {pp.player_name} ({pp.team}): {pp.goal_prob:.1%} goal prob, "
-        f"expected {pp.expected_goals:.2f} goals"
-        for pp in p.player_picks
-    )
     ml_line = (
         f"- Moneyline edge on home: {e.moneyline_edge:+.1%}\n"
         f"- Market total line: {e.market_total_line or 'N/A'}\n"
         if e.has_odds else
         "- No market odds yet — focus on player model output\n"
     )
+
+    picks_lines = "\n".join(
+        _format_pick(pp, p.player_recent_form.get(pp.player_id))
+        for pp in p.player_picks
+    )
+
     return (
         f"Game: {p.game.away_team} @ {p.game.home_team} — TODAY\n\n"
         f"Team model:\n"
@@ -169,6 +176,16 @@ def _prompt_pre(p: AnalyticsPayload) -> str:
         f"Top goal scorer picks:\n{picks_lines}\n\n"
         "Write a PRE-GAME script. Focus: player props, who scores tonight."
     )
+
+
+def _format_pick(pp: PlayerPoissonResult, form: "PlayerRecentForm | None") -> str:
+    base = (
+        f"  - {pp.player_name} ({pp.team}): {pp.goal_prob:.1%} goal prob, "
+        f"expected {pp.expected_goals:.2f} goals"
+    )
+    if form and form.games_played > 0:
+        base += f", {form.goals}G {form.assists}A in last {form.games_played} games"
+    return base
 
 
 def _prompt_post(p: AnalyticsPayload) -> str:
@@ -229,8 +246,13 @@ def _parse_response(
 
     # Fallback: derive from payload
     e = payload.edge
-    direction = "home" if e.moneyline_edge > 0 else "away"
-    edge_summary = f"{e.moneyline_edge:+.1%} edge on {direction} moneyline"
+    if e.has_odds and e.moneyline_edge is not None:
+        direction = "home" if e.moneyline_edge > 0 else "away"
+        edge_summary = f"{e.moneyline_edge:+.1%} edge on {direction} moneyline"
+    else:
+        po = payload.poisson
+        leader = payload.game.home_team if po.home_win_prob > po.away_win_prob else payload.game.away_team
+        edge_summary = f"model favors {leader} ({max(po.home_win_prob, po.away_win_prob):.1%})"
     hook_visual = f"{payload.game.away_team} @ {payload.game.home_team} analytics"
     return script_body, hook_visual, edge_summary
 

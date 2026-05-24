@@ -22,6 +22,7 @@ class PlayerPoissonResult:
     goal_prob: float        # P(goals >= 1)
     two_goal_prob: float    # P(goals >= 2)
     calibration_version: str
+    player_id: str = ""     # NHL player ID (from MoneyPuck); "" if unknown
 
 
 def run_player_model(
@@ -44,6 +45,7 @@ def run_player_model(
         goal_prob=round(goal_prob, 4),
         two_goal_prob=round(two_goal_prob, 4),
         calibration_version=cal.version,
+        player_id=player.player_id,
     )
 
 
@@ -53,12 +55,18 @@ def top_goal_scorers(
     top_n: int = 3,
     season: str | None = None,
     game_type: str = "regular",
+    scratches: set[str] | None = None,
 ) -> list[PlayerPoissonResult]:
-    """Return the top *top_n* goal scorers for *team*, ranked by expected_goals."""
+    """Return the top *top_n* goal scorers for *team*, ranked by expected_goals.
+
+    *scratches* is an optional set of NHL player IDs to exclude (scratched players).
+    """
+    excluded = scratches or set()
     team_forwards = [
         p for p in players
         if p.team == team and p.position in ("C", "L", "R", "F")
         and p.games_played >= 10
+        and p.player_id not in excluded
     ]
     results = [run_player_model(p, season, game_type) for p in team_forwards]
     results.sort(key=lambda r: r.expected_goals, reverse=True)

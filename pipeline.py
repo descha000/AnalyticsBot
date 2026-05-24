@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from data.moneypuck import fetch_player_stats, fetch_team_stats
+from data.nhl_client import fetch_game_scratches, fetch_player_recent_form
 from data.nhl_schedule import NHLGame, fetch_game_result, fetch_next_game, fetch_today_games
 from data.odds import fetch_game_odds, fetch_player_odds, match_odds_to_games
 from history.game_state import (
@@ -77,14 +78,37 @@ def run_pre(game: NHLGame, sport: str) -> None:
     odds = _fetch_odds_for_game(game, sport)
     edge = compute_edge(poisson, odds)
 
+    scratches = fetch_game_scratches(game_id)
+    if scratches:
+        print(f"[pipeline] {len(scratches)} scratch(es) found for {game_id}")
+
     all_players = fetch_player_stats()
-    home_picks = top_goal_scorers(all_players, game.home_team, top_n=2, game_type=game.game_type)
-    away_picks = top_goal_scorers(all_players, game.away_team, top_n=1, game_type=game.game_type)
+    home_picks = top_goal_scorers(
+        all_players, game.home_team, top_n=2,
+        game_type=game.game_type, scratches=scratches,
+    )
+    away_picks = top_goal_scorers(
+        all_players, game.away_team, top_n=1,
+        game_type=game.game_type, scratches=scratches,
+    )
+    picks = home_picks + away_picks
+
+    nhl_game_type = 3 if game.game_type == "playoff" else 2
+    recent_form = {}
+    for pick in picks:
+        if pick.player_id:
+            form = fetch_player_recent_form(
+                pick.player_id, season=game.season,
+                game_type=nhl_game_type, last_n=5,
+            )
+            if form:
+                recent_form[pick.player_id] = form
 
     payload = AnalyticsPayload(
         game=game, slot="pre", edge=edge, poisson=poisson,
-        player_picks=home_picks + away_picks,
+        player_picks=picks,
         actual_result=None, model_snapshot=None,
+        player_recent_form=recent_form,
     )
     script = generate_script(payload)
     _write_output(script)
