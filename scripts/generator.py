@@ -129,15 +129,20 @@ def _build_prompt(payload: AnalyticsPayload) -> str:
 def _prompt_preview(p: AnalyticsPayload) -> str:
     e, po = p.edge, p.poisson
     game_date = p.game.start_time_utc.strftime("%B %d")
+    odds_lines = (
+        f"- Moneyline edge on home: {e.moneyline_edge:+.1%}\n"
+        f"- Market total line: {e.market_total_line}\n"
+        f"- Market-implied home win: {e.market_home_implied_prob:.1%}\n"
+        if e.has_odds else
+        "- No market odds available yet — focus on model output only\n"
+    )
     return (
         f"Game: {p.game.away_team} @ {p.game.home_team} on {game_date}\n\n"
         f"Model output:\n"
         f"- Home win probability: {po.home_win_prob:.1%}\n"
         f"- Away win probability: {po.away_win_prob:.1%}\n"
         f"- Expected total goals: {po.expected_total:.2f}\n"
-        f"- Moneyline edge on home: {e.moneyline_edge:+.1%}\n"
-        f"- Market total line: {e.market_total_line or 'N/A'}\n"
-        f"- Home moneyline: {e.market_home_implied_prob:.1%} implied\n\n"
+        f"{odds_lines}\n"
         "Write a PREVIEW script. Focus: team matchup, win probability, model edge."
     )
 
@@ -149,12 +154,18 @@ def _prompt_pre(p: AnalyticsPayload) -> str:
         f"expected {pp.expected_goals:.2f} goals"
         for pp in p.player_picks
     )
+    ml_line = (
+        f"- Moneyline edge on home: {e.moneyline_edge:+.1%}\n"
+        f"- Market total line: {e.market_total_line or 'N/A'}\n"
+        if e.has_odds else
+        "- No market odds yet — focus on player model output\n"
+    )
     return (
         f"Game: {p.game.away_team} @ {p.game.home_team} — TODAY\n\n"
         f"Team model:\n"
         f"- Home win probability: {po.home_win_prob:.1%}\n"
-        f"- Moneyline edge on home: {e.moneyline_edge:+.1%}\n"
-        f"- Expected total: {po.expected_total:.2f} vs market line {e.market_total_line or 'N/A'}\n\n"
+        f"{ml_line}"
+        f"- Expected total: {po.expected_total:.2f}\n\n"
         f"Top goal scorer picks:\n{picks_lines}\n\n"
         "Write a PRE-GAME script. Focus: player props, who scores tonight."
     )
@@ -174,14 +185,18 @@ def _prompt_post(p: AnalyticsPayload) -> str:
     final_str = (
         f"{r.away_score}-{r.home_score} {r.final_period}" if r else "result unknown"
     )
+    ml_line = (
+        f"- Moneyline edge we called: {e.moneyline_edge:+.1%}\n"
+        if e.has_odds else ""
+    )
 
     return (
         f"Game: {p.game.away_team} @ {p.game.home_team} — FINAL: {final_str}\n\n"
         f"What we predicted:\n"
         f"- Home win probability: {snap.get('home_win_prob', p.poisson.home_win_prob):.1%}\n"
         f"- Expected total goals: {snap.get('expected_total', p.poisson.expected_total):.2f}\n"
-        f"- Moneyline edge on home: {e.moneyline_edge:+.1%}\n\n"
-        f"What happened: {actual_winner}, {actual_total} total goals\n\n"
+        f"{ml_line}"
+        f"\nWhat happened: {actual_winner}, {actual_total} total goals\n\n"
         "Write a POST-GAME script. Focus: model accuracy, what was right/wrong and why."
     )
 

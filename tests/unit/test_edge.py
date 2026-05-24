@@ -42,6 +42,23 @@ class TestComputeEdge:
         result = compute_edge(sample_poisson, boston_odds)
         assert result.featured is False
 
+    def test_has_odds_true_when_odds_provided(self, sample_poisson, boston_odds):
+        result = compute_edge(sample_poisson, boston_odds)
+        assert result.has_odds is True
+
+    def test_no_odds_returns_model_only_edge(self, sample_poisson):
+        result = compute_edge(sample_poisson, None)
+        assert result.has_odds is False
+        assert result.moneyline_edge is None
+        assert result.market_home_implied_prob is None
+        assert result.market_total_line is None
+        assert result.divergence_score == 0.0
+        assert result.model_home_win_prob == pytest.approx(sample_poisson.home_win_prob, abs=0.001)
+
+    def test_no_odds_game_id_from_teams(self, sample_poisson):
+        result = compute_edge(sample_poisson, None)
+        assert "BOS" in result.game_id and "FLA" in result.game_id
+
     def test_larger_divergence_when_bigger_ml_edge(self, sample_poisson, boston_odds):
         from data.odds import GameOdds
         from models.team_model import PoissonResult

@@ -148,9 +148,8 @@ def _fetch_odds_for_game(game: NHLGame, sport: str):
     matched = match_odds_to_games([game], all_odds)
     odds = matched.get(game.game_id)
     if not odds:
-        print(f"[pipeline] No odds found for {game.game_id} ({game.away_team} @ {game.home_team})")
-        sys.exit(1)
-    return odds
+        print(f"[pipeline] No odds found for {game.game_id} ({game.away_team} @ {game.home_team}) — running model-only")
+    return odds  # None is handled by compute_edge
 
 
 def _write_output(script) -> None:
