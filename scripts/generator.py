@@ -27,7 +27,7 @@ from models.team_model import PoissonResult
 
 load_dotenv()
 
-_MODEL = "claude-sonnet-4-20250514"
+_MODEL = "claude-sonnet-4-6"
 _MAX_TOKENS = 600
 
 _SYSTEM_PROMPT = """\
