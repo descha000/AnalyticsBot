@@ -27,9 +27,10 @@ class PlayerPoissonResult:
 def run_player_model(
     player: PlayerStats,
     season: str | None = None,
+    game_type: str = "regular",
 ) -> PlayerPoissonResult:
     """Estimate goal probability for *player* in a single game."""
-    cal = get_calibration_factors(season)
+    cal = get_calibration_factors(season, game_type)
     lam = _player_lambda(player, cal.player_goal_multiplier)
 
     pmf = _poisson_pmf_list(lam, max_goals=5)
@@ -51,6 +52,7 @@ def top_goal_scorers(
     team: str,
     top_n: int = 3,
     season: str | None = None,
+    game_type: str = "regular",
 ) -> list[PlayerPoissonResult]:
     """Return the top *top_n* goal scorers for *team*, ranked by expected_goals."""
     team_forwards = [
@@ -58,7 +60,7 @@ def top_goal_scorers(
         if p.team == team and p.position in ("C", "L", "R", "F")
         and p.games_played >= 10
     ]
-    results = [run_player_model(p, season) for p in team_forwards]
+    results = [run_player_model(p, season, game_type) for p in team_forwards]
     results.sort(key=lambda r: r.expected_goals, reverse=True)
     return results[:top_n]
 

@@ -27,9 +27,19 @@ class TestRunTeamModel:
             result.expected_home_goals + result.expected_away_goals, abs=0.001
         )
 
-    def test_calibration_version_set(self, boston_stats, florida_stats):
-        result = run_team_model(boston_stats, florida_stats)
+    def test_calibration_version_regular(self, boston_stats, florida_stats):
+        result = run_team_model(boston_stats, florida_stats, game_type="regular")
         assert result.calibration_version == "uncalibrated_v0"
+
+    def test_calibration_version_playoff(self, boston_stats, florida_stats):
+        result = run_team_model(boston_stats, florida_stats, game_type="playoff")
+        assert result.calibration_version == "playoff_empirical_v0"
+
+    def test_playoff_expected_total_lower_than_regular(self, boston_stats, florida_stats):
+        reg = run_team_model(boston_stats, florida_stats, game_type="regular")
+        plo = run_team_model(boston_stats, florida_stats, game_type="playoff")
+        assert plo.expected_total < reg.expected_total
+        assert plo.expected_total == pytest.approx(reg.expected_total * 0.90, rel=0.01)
 
     def test_stronger_offense_higher_win_prob(self, boston_stats, florida_stats):
         from data.moneypuck import TeamStats

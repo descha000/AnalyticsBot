@@ -49,7 +49,7 @@ def run_preview(game: NHLGame, sport: str) -> None:
         return
 
     home_stats, away_stats = _fetch_team_stats(game)
-    poisson = run_team_model(home_stats, away_stats)
+    poisson = run_team_model(home_stats, away_stats, game_type=game.game_type)
 
     odds = _fetch_odds_for_game(game, sport)
 
@@ -72,14 +72,14 @@ def run_pre(game: NHLGame, sport: str) -> None:
         return
 
     home_stats, away_stats = _fetch_team_stats(game)
-    poisson = run_team_model(home_stats, away_stats)
+    poisson = run_team_model(home_stats, away_stats, game_type=game.game_type)
 
     odds = _fetch_odds_for_game(game, sport)
     edge = compute_edge(poisson, odds)
 
     all_players = fetch_player_stats()
-    home_picks = top_goal_scorers(all_players, game.home_team, top_n=2)
-    away_picks = top_goal_scorers(all_players, game.away_team, top_n=1)
+    home_picks = top_goal_scorers(all_players, game.home_team, top_n=2, game_type=game.game_type)
+    away_picks = top_goal_scorers(all_players, game.away_team, top_n=1, game_type=game.game_type)
 
     payload = AnalyticsPayload(
         game=game, slot="pre", edge=edge, poisson=poisson,
@@ -105,7 +105,7 @@ def run_post(game: NHLGame, sport: str) -> None:
         sys.exit(0)
 
     home_stats, away_stats = _fetch_team_stats(game)
-    poisson = run_team_model(home_stats, away_stats)
+    poisson = run_team_model(home_stats, away_stats, game_type=game.game_type)
 
     odds = _fetch_odds_for_game(game, sport)
     edge = compute_edge(poisson, odds)

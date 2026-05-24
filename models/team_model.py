@@ -33,6 +33,7 @@ def run_team_model(
     home: TeamStats,
     away: TeamStats,
     season: str | None = None,
+    game_type: str = "regular",
 ) -> PoissonResult:
     """
     Run the Poisson model for a single game.
@@ -40,8 +41,9 @@ def run_team_model(
     Lambda = team_shot_rate_60 × (1 - opponent_save_pct) × calibration_multiplier.
     shot_rate_60 is shots per 60 min; treating a regulation game as 60 min gives
     shots_per_game directly.
+    game_type: "regular" | "playoff" — playoffs apply a 0.90 calibration factor.
     """
-    cal = get_calibration_factors(season)
+    cal = get_calibration_factors(season, game_type)
 
     # opp_goalie_sv_pct = THIS team's own goalie save_pct (who opposes incoming shots).
     # poisson.run uses: lam_home = home.shots * (1 - away.opp_goalie_sv_pct)
