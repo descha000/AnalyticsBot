@@ -1,0 +1,13 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+output/
+costs/usage_*.jsonl
+history/game_state.json
+*.egg-info/
+.pytest_cache/
+analytics_client_secret.json
+*.json.bak
