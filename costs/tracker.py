@@ -32,7 +32,7 @@ def log_claude(call: str, model: str, input_tokens: int, output_tokens: int) -> 
         "output_tokens": output_tokens,
         "cost_usd": round(cost, 6),
     })
-    print(f"[costs] {call} — {input_tokens}in / {output_tokens}out tokens → ${cost:.4f}")
+    print(f"[costs] {call} -- {input_tokens}in / {output_tokens}out tokens -> ${cost:.4f}")
 
 
 def daily_summary(date_str: str | None = None) -> dict:

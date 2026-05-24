@@ -62,7 +62,7 @@ def run_preview(game: NHLGame, sport: str) -> None:
     _write_output(script)
     save_model_snapshot(game_id, script.model_snapshot)
     mark_slot_done(game_id, "preview")
-    print(f"[pipeline] preview done — {game.away_team} @ {game.home_team}")
+    print(f"[pipeline] preview done --{game.away_team} @ {game.home_team}")
 
 
 def run_pre(game: NHLGame, sport: str) -> None:
@@ -90,7 +90,7 @@ def run_pre(game: NHLGame, sport: str) -> None:
     _write_output(script)
     save_model_snapshot(game_id, script.model_snapshot)
     mark_slot_done(game_id, "pre")
-    print(f"[pipeline] pre done — {game.away_team} @ {game.home_team}")
+    print(f"[pipeline] pre done --{game.away_team} @ {game.home_team}")
 
 
 def run_post(game: NHLGame, sport: str) -> None:
@@ -101,7 +101,7 @@ def run_post(game: NHLGame, sport: str) -> None:
 
     result = fetch_game_result(game_id)
     if not result:
-        print(f"[pipeline] Game {game_id} not final yet — try again later")
+        print(f"[pipeline] Game {game_id} not final yet --try again later")
         sys.exit(0)
 
     home_stats, away_stats = _fetch_team_stats(game)
@@ -120,7 +120,7 @@ def run_post(game: NHLGame, sport: str) -> None:
     _write_output(script)
     mark_slot_done(game_id, "post")
     print(
-        f"[pipeline] post done — {game.away_team} @ {game.home_team} "
+        f"[pipeline] post done --{game.away_team} @ {game.home_team} "
         f"({result.away_score}-{result.home_score} {result.final_period})"
     )
 
@@ -148,7 +148,7 @@ def _fetch_odds_for_game(game: NHLGame, sport: str):
     matched = match_odds_to_games([game], all_odds)
     odds = matched.get(game.game_id)
     if not odds:
-        print(f"[pipeline] No odds found for {game.game_id} ({game.away_team} @ {game.home_team}) — running model-only")
+        print(f"[pipeline] No odds found for {game.game_id} ({game.away_team} @ {game.home_team}) --running model-only")
     return odds  # None is handled by compute_edge
 
 
@@ -156,7 +156,7 @@ def _write_output(script) -> None:
     OUTPUT_DIR.mkdir(exist_ok=True)
     path = OUTPUT_DIR / f"{script.game_id}_{script.slot}.json"
     path.write_text(json.dumps(asdict(script), indent=2), encoding="utf-8")
-    print(f"[pipeline] script → {path}")
+    print(f"[pipeline] script -> {path}")
 
 
 def _resolve_game(game_id: str | None, slot: str) -> NHLGame:
@@ -172,12 +172,12 @@ def _resolve_game(game_id: str | None, slot: str) -> NHLGame:
     if slot == "preview":
         game = fetch_next_game()
         if not game:
-            print("[pipeline] No upcoming games found in the next 7 days — nothing to do")
+            print("[pipeline] No upcoming games found in the next 7 days --nothing to do")
             sys.exit(0)
         return game
 
     if not games:
-        print("[pipeline] No games today and slot is not 'preview' — nothing to do")
+        print("[pipeline] No games today and slot is not 'preview' --nothing to do")
         sys.exit(0)
 
     return games[0]
