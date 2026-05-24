@@ -34,29 +34,32 @@ def run_team_model(
     away: TeamStats,
     season: str | None = None,
     game_type: str = "regular",
+    home_starter_sv_pct: float | None = None,
+    away_starter_sv_pct: float | None = None,
 ) -> PoissonResult:
     """
     Run the Poisson model for a single game.
 
-    Lambda = team_shot_rate_60 × (1 - opponent_save_pct) × calibration_multiplier.
-    shot_rate_60 is shots per 60 min; treating a regulation game as 60 min gives
-    shots_per_game directly.
+    Lambda = team_shot_rate_60 × (1 - opponent_goalie_sv_pct) × calibration_multiplier.
     game_type: "regular" | "playoff" — playoffs apply a 0.90 calibration factor.
+
+    home_starter_sv_pct / away_starter_sv_pct: live NHL Edge save% for each team's
+    starting goalie. When provided, these replace the MoneyPuck season-average save_pct.
     """
     cal = get_calibration_factors(season, game_type)
 
-    # opp_goalie_sv_pct = THIS team's own goalie save_pct (who opposes incoming shots).
-    # poisson.run uses: lam_home = home.shots * (1 - away.opp_goalie_sv_pct)
-    # → away.opp_goalie_sv_pct must be the away goalie's save_pct (home shoots at away goalie).
+    # opp_goalie_sv_pct = THIS team's own goalie (who faces incoming shots).
+    # lam_home = home.shots * (1 - away.opp_goalie_sv_pct)  → away goalie faces home shots
+    # lam_away = away.shots * (1 - home.opp_goalie_sv_pct)  → home goalie faces away shots
     home_inputs = TeamInputs(
         name=home.team,
         shots_for_pg=home.shot_rate_60 * cal.team_goal_multiplier,
-        opp_goalie_sv_pct=home.save_pct,
+        opp_goalie_sv_pct=home_starter_sv_pct if home_starter_sv_pct is not None else home.save_pct,
     )
     away_inputs = TeamInputs(
         name=away.team,
         shots_for_pg=away.shot_rate_60 * cal.team_goal_multiplier,
-        opp_goalie_sv_pct=away.save_pct,
+        opp_goalie_sv_pct=away_starter_sv_pct if away_starter_sv_pct is not None else away.save_pct,
     )
     out: ModelOutput = poisson_run(home_inputs, away_inputs)
 

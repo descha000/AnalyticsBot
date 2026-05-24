@@ -5,12 +5,14 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from data.nhl_client import (
+    GoalieInfo,
     GoalieSavePct,
     PlayerRecentForm,
     fetch_game_scratches,
     fetch_goalie_save_pct,
     fetch_player_recent_form,
     fetch_team_goalie_ids,
+    resolve_starter_goalie,
 )
 
 # ---------------------------------------------------------------------------
@@ -146,6 +148,66 @@ class TestFetchPlayerRecentForm:
         mock_nhl.stats.player_game_log.return_value = self._sample_log[:2]
         result = fetch_player_recent_form("8478402", last_n=5)
         assert result.games_played == 2
+
+
+# ---------------------------------------------------------------------------
+# resolve_starter_goalie
+# ---------------------------------------------------------------------------
+
+class TestResolveStarterGoalie:
+    _roster = {
+        "goalies": [
+            {
+                "id": "8476945",
+                "firstName": {"default": "Jeremy"},
+                "lastName": {"default": "Swayman"},
+            },
+            {
+                "id": "8479973",
+                "firstName": {"default": "Linus"},
+                "lastName": {"default": "Ullmark"},
+            },
+        ]
+    }
+
+    def test_returns_first_non_scratched_goalie(self, mock_nhl):
+        mock_nhl.teams.team_roster.return_value = self._roster
+        mock_nhl.edge.goalie_save_percentage_detail.return_value = {
+            "overallSavePctg": 0.927,
+            "highDangerSavePctg": 0.868,
+        }
+        result = resolve_starter_goalie("BOS", scratches=set())
+        assert isinstance(result, GoalieInfo)
+        assert result.player_id == "8476945"
+        assert result.name == "Jeremy Swayman"
+        assert result.edge_sv_pct == pytest.approx(0.927)
+
+    def test_skips_scratched_starter_picks_backup(self, mock_nhl):
+        mock_nhl.teams.team_roster.return_value = self._roster
+        mock_nhl.edge.goalie_save_percentage_detail.return_value = {
+            "overallSavePctg": 0.910,
+        }
+        result = resolve_starter_goalie("BOS", scratches={"8476945"})
+        assert result.player_id == "8479973"
+        assert result.name == "Linus Ullmark"
+
+    def test_returns_none_when_all_scratched(self, mock_nhl):
+        mock_nhl.teams.team_roster.return_value = self._roster
+        result = resolve_starter_goalie("BOS", scratches={"8476945", "8479973"})
+        assert result is None
+
+    def test_returns_none_on_roster_error(self, mock_nhl):
+        mock_nhl.teams.team_roster.side_effect = Exception("API down")
+        result = resolve_starter_goalie("BOS", scratches=set())
+        assert result is None
+
+    def test_edge_sv_pct_none_when_edge_unavailable(self, mock_nhl):
+        mock_nhl.teams.team_roster.return_value = self._roster
+        mock_nhl.edge.goalie_save_percentage_detail.side_effect = Exception("no edge data")
+        result = resolve_starter_goalie("BOS", scratches=set())
+        assert result is not None
+        assert result.edge_sv_pct is None
+        assert result.name == "Jeremy Swayman"
 
 
 # ---------------------------------------------------------------------------

@@ -79,3 +79,30 @@ class TestRunTeamModel:
         result = run_team_model(boston_stats, florida_stats)
         expected_lh = boston_stats.shot_rate_60 * (1 - florida_stats.save_pct)
         assert result.expected_home_goals == pytest.approx(expected_lh, rel=0.01)
+
+    def test_away_starter_sv_pct_overrides_save_pct_for_home_goals(self, boston_stats, florida_stats):
+        # away_starter_sv_pct replaces florida.save_pct in lam_home calculation
+        live_sv = 0.940   # elite goalie; deliberately different from florida_stats.save_pct
+        result = run_team_model(boston_stats, florida_stats, away_starter_sv_pct=live_sv)
+        expected_lh = boston_stats.shot_rate_60 * (1 - live_sv)
+        assert result.expected_home_goals == pytest.approx(expected_lh, rel=0.01)
+
+    def test_home_starter_sv_pct_overrides_save_pct_for_away_goals(self, boston_stats, florida_stats):
+        # home_starter_sv_pct replaces boston.save_pct in lam_away calculation
+        live_sv = 0.880
+        result = run_team_model(boston_stats, florida_stats, home_starter_sv_pct=live_sv)
+        expected_la = florida_stats.shot_rate_60 * (1 - live_sv)
+        assert result.expected_away_goals == pytest.approx(expected_la, rel=0.01)
+
+    def test_starter_sv_pct_none_falls_back_to_moneypuck(self, boston_stats, florida_stats):
+        # None override must behave identically to not passing it
+        r_default = run_team_model(boston_stats, florida_stats)
+        r_none = run_team_model(boston_stats, florida_stats,
+                                home_starter_sv_pct=None, away_starter_sv_pct=None)
+        assert r_default.expected_home_goals == pytest.approx(r_none.expected_home_goals)
+        assert r_default.expected_away_goals == pytest.approx(r_none.expected_away_goals)
+
+    def test_higher_away_sv_pct_lowers_home_goals(self, boston_stats, florida_stats):
+        low_sv = run_team_model(boston_stats, florida_stats, away_starter_sv_pct=0.880)
+        high_sv = run_team_model(boston_stats, florida_stats, away_starter_sv_pct=0.940)
+        assert high_sv.expected_home_goals < low_sv.expected_home_goals

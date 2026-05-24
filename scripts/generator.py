@@ -65,6 +65,8 @@ class AnalyticsPayload:
     model_snapshot: dict | None                     # post slot: pre-event prediction
     # optional enrichments (pre slot); keyed by player_id
     player_recent_form: dict[str, "PlayerRecentForm"] = field(default_factory=dict)
+    # pre-formatted goalie matchup string, e.g. "Swayman (.927) vs Skinner (.901)"
+    goalie_context: str = ""
 
 
 @dataclass
@@ -142,14 +144,16 @@ def _prompt_preview(p: AnalyticsPayload) -> str:
         if e.has_odds else
         "- No market odds available yet — focus on model output only\n"
     )
+    goalie_line = f"- Starter matchup: {p.goalie_context}\n" if p.goalie_context else ""
     return (
         f"Game: {p.game.away_team} @ {p.game.home_team} on {game_date}\n\n"
         f"Model output:\n"
         f"- Home win probability: {po.home_win_prob:.1%}\n"
         f"- Away win probability: {po.away_win_prob:.1%}\n"
         f"- Expected total goals: {po.expected_total:.2f}\n"
+        f"{goalie_line}"
         f"{odds_lines}\n"
-        "Write a PREVIEW script. Focus: team matchup, win probability, model edge."
+        "Write a PREVIEW script. Focus: team matchup, win probability, goalie matchup if available, model edge."
     )
 
 
@@ -162,6 +166,7 @@ def _prompt_pre(p: AnalyticsPayload) -> str:
         "- No market odds yet — focus on player model output\n"
     )
 
+    goalie_line = f"- Starter matchup: {p.goalie_context}\n" if p.goalie_context else ""
     picks_lines = "\n".join(
         _format_pick(pp, p.player_recent_form.get(pp.player_id))
         for pp in p.player_picks
@@ -172,9 +177,10 @@ def _prompt_pre(p: AnalyticsPayload) -> str:
         f"Team model:\n"
         f"- Home win probability: {po.home_win_prob:.1%}\n"
         f"{ml_line}"
-        f"- Expected total: {po.expected_total:.2f}\n\n"
+        f"- Expected total: {po.expected_total:.2f}\n"
+        f"{goalie_line}\n"
         f"Top goal scorer picks:\n{picks_lines}\n\n"
-        "Write a PRE-GAME script. Focus: player props, who scores tonight."
+        "Write a PRE-GAME script. Focus: player props, who scores tonight. Mention goalie matchup if sv% data is available."
     )
 
 

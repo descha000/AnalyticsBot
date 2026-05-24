@@ -1,9 +1,10 @@
 """
 nhlpy (nhl-api-py) wrapper for AnalyticsBot.
 
-Provides three data enrichments for the pre-game slot:
+Provides data enrichments consumed by the pipeline:
   - fetch_game_scratches     -> set of player IDs scratched from a game
   - fetch_goalie_save_pct    -> save% from NHL Edge for a given goalie
+  - resolve_starter_goalie   -> first non-scratched goalie + live Edge sv%
   - fetch_player_recent_form -> last-N-game goal/shot/point totals for a player
   - fetch_team_goalie_ids    -> goalie player IDs for a team this season
 
@@ -135,6 +136,58 @@ def fetch_player_recent_form(
     except Exception as exc:
         logger.warning("fetch_player_recent_form(%s) failed: %s", player_id, exc)
         return None
+
+
+# ---------------------------------------------------------------------------
+# Starter goalie resolution (roster + Edge sv%)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class GoalieInfo:
+    player_id: str
+    name: str
+    edge_sv_pct: float | None          # None when Edge data unavailable
+    high_danger_sv_pct: float | None
+
+
+def resolve_starter_goalie(
+    team_abbr: str,
+    scratches: set[str],
+    season: str = "20252026",
+    game_type: int = 3,
+) -> GoalieInfo | None:
+    """Return info for the expected starting goalie (first non-scratched on roster).
+
+    Roster order typically has the #1 goalie first. Returns None when the roster
+    fetch fails or every listed goalie is scratched.
+    """
+    try:
+        roster = _get_client().teams.team_roster(team_abbr=team_abbr, season=season)
+        goalies = roster.get("goalies", [])
+    except Exception as exc:
+        logger.warning("team_roster(%s) failed: %s", team_abbr, exc)
+        return None
+
+    for g in goalies:
+        pid = str(g.get("id", ""))
+        if not pid or pid in scratches:
+            continue
+
+        first = g.get("firstName", {})
+        last = g.get("lastName", {})
+        first_name = first.get("default", "") if isinstance(first, dict) else str(first)
+        last_name = last.get("default", "") if isinstance(last, dict) else str(last)
+        name = f"{first_name} {last_name}".strip() or pid
+
+        sv_data = fetch_goalie_save_pct(pid, season=season, game_type=game_type)
+        return GoalieInfo(
+            player_id=pid,
+            name=name,
+            edge_sv_pct=sv_data.overall_sv_pct if sv_data else None,
+            high_danger_sv_pct=sv_data.high_danger_sv_pct if sv_data else None,
+        )
+
+    return None
 
 
 # ---------------------------------------------------------------------------

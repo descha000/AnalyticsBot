@@ -21,7 +21,11 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from data.moneypuck import fetch_player_stats, fetch_team_stats
-from data.nhl_client import fetch_game_scratches, fetch_player_recent_form
+from data.nhl_client import (
+    fetch_game_scratches,
+    fetch_player_recent_form,
+    resolve_starter_goalie,
+)
 from data.nhl_schedule import NHLGame, fetch_game_result, fetch_next_game, fetch_today_games
 from data.odds import fetch_game_odds, fetch_player_odds, match_odds_to_games
 from history.game_state import (
@@ -50,14 +54,25 @@ def run_preview(game: NHLGame, sport: str) -> None:
         return
 
     home_stats, away_stats = _fetch_team_stats(game)
-    poisson = run_team_model(home_stats, away_stats, game_type=game.game_type)
+
+    nhl_game_type = 3 if game.game_type == "playoff" else 2
+    home_goalie = resolve_starter_goalie(game.home_team, set(), game.season, nhl_game_type)
+    away_goalie = resolve_starter_goalie(game.away_team, set(), game.season, nhl_game_type)
+    goalie_ctx = _format_goalie_context(home_goalie, away_goalie)
+
+    poisson = run_team_model(
+        home_stats, away_stats, game_type=game.game_type,
+        home_starter_sv_pct=home_goalie.edge_sv_pct if home_goalie else None,
+        away_starter_sv_pct=away_goalie.edge_sv_pct if away_goalie else None,
+    )
 
     odds = _fetch_odds_for_game(game, sport)
-
     edge = compute_edge(poisson, odds)
+
     payload = AnalyticsPayload(
         game=game, slot="preview", edge=edge, poisson=poisson,
         player_picks=[], actual_result=None, model_snapshot=None,
+        goalie_context=goalie_ctx,
     )
     script = generate_script(payload)
     _write_output(script)
@@ -78,9 +93,21 @@ def run_pre(game: NHLGame, sport: str) -> None:
     odds = _fetch_odds_for_game(game, sport)
     edge = compute_edge(poisson, odds)
 
+    nhl_game_type = 3 if game.game_type == "playoff" else 2
+
     scratches = fetch_game_scratches(game_id)
     if scratches:
         print(f"[pipeline] {len(scratches)} scratch(es) found for {game_id}")
+
+    home_goalie = resolve_starter_goalie(game.home_team, scratches, game.season, nhl_game_type)
+    away_goalie = resolve_starter_goalie(game.away_team, scratches, game.season, nhl_game_type)
+    goalie_ctx = _format_goalie_context(home_goalie, away_goalie)
+
+    poisson = run_team_model(
+        home_stats, away_stats, game_type=game.game_type,
+        home_starter_sv_pct=home_goalie.edge_sv_pct if home_goalie else None,
+        away_starter_sv_pct=away_goalie.edge_sv_pct if away_goalie else None,
+    )
 
     all_players = fetch_player_stats()
     home_picks = top_goal_scorers(
@@ -93,7 +120,6 @@ def run_pre(game: NHLGame, sport: str) -> None:
     )
     picks = home_picks + away_picks
 
-    nhl_game_type = 3 if game.game_type == "playoff" else 2
     recent_form = {}
     for pick in picks:
         if pick.player_id:
@@ -109,6 +135,7 @@ def run_pre(game: NHLGame, sport: str) -> None:
         player_picks=picks,
         actual_result=None, model_snapshot=None,
         player_recent_form=recent_form,
+        goalie_context=goalie_ctx,
     )
     script = generate_script(payload)
     _write_output(script)
@@ -152,6 +179,24 @@ def run_post(game: NHLGame, sport: str) -> None:
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
+
+def _format_goalie_context(home_g, away_g) -> str:
+    """Format 'Swayman (.927) vs Skinner (.901) — live NHL Edge sv%' or empty string."""
+    parts = []
+    has_live = False
+    for g in (home_g, away_g):
+        if g is None:
+            continue
+        if g.edge_sv_pct is not None:
+            parts.append(f"{g.name} (.{int(round(g.edge_sv_pct * 1000)):03d} sv%)")
+            has_live = True
+        else:
+            parts.append(g.name)
+    if not parts:
+        return ""
+    suffix = " -- live NHL Edge sv%" if has_live else ""
+    return " vs ".join(parts) + suffix
+
 
 def _fetch_team_stats(game: NHLGame):
     all_stats = fetch_team_stats()
