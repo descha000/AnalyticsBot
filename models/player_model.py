@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from data.moneypuck import PlayerStats
 from models.calibration.historical import get_calibration_factors
-from models.poisson import _poisson_pmf
+from models.poisson import _poisson_pmf_list
 
 
 @dataclass
@@ -32,7 +32,7 @@ def run_player_model(
     cal = get_calibration_factors(season)
     lam = _player_lambda(player, cal.player_goal_multiplier)
 
-    pmf = _poisson_pmf(lam, max_goals=5)
+    pmf = _poisson_pmf_list(lam, max_goals=5)
     goal_prob = max(0.0, 1.0 - pmf[0])
     two_goal_prob = max(0.0, 1.0 - pmf[0] - pmf[1])
 

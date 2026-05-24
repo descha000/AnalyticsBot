@@ -1,9 +1,9 @@
 """
 Team-level Poisson model.
 
-Converts TeamStats from MoneyPuck into expected-goals lambdas using a
-Dixon-Coles-style attack/defence adjustment, then delegates to poisson.py
-for the probability computation.
+Converts TeamStats from MoneyPuck into expected-goals lambdas using the
+user's formula (shots × (1 - save_pct)), then delegates to poisson.py
+for the full probability computation.
 """
 
 from __future__ import annotations
@@ -12,11 +12,8 @@ from dataclasses import dataclass
 
 from data.moneypuck import TeamStats
 from models.calibration.historical import get_calibration_factors
-from models.poisson import calculate_win_probabilities
-
-# League-average xGF per game (all situations, NHL 2024-25 benchmark).
-# Update if the league scoring environment shifts significantly.
-_LEAGUE_AVG_XGF = 2.8
+from models.poisson import ModelOutput, TeamInputs
+from models.poisson import run as poisson_run
 
 
 @dataclass
@@ -40,36 +37,35 @@ def run_team_model(
     """
     Run the Poisson model for a single game.
 
-    Strategy:
-      lambda_home = home_attack_strength × away_defence_weakness
-      attack_strength  = team_xgf_per_game / league_avg
-      defence_weakness = team_xga_per_game / league_avg
-      → lambda = (home_xgf / avg) × (away_xga / avg) × avg
+    Lambda = team_shot_rate_60 × (1 - opponent_save_pct) × calibration_multiplier.
+    shot_rate_60 is shots per 60 min; treating a regulation game as 60 min gives
+    shots_per_game directly.
     """
     cal = get_calibration_factors(season)
 
-    lambda_home = _estimate_lambda(home, away, cal.team_goal_multiplier)
-    lambda_away = _estimate_lambda(away, home, cal.team_goal_multiplier)
-
-    home_win, draw, away_win = calculate_win_probabilities(lambda_home, lambda_away)
+    # opp_goalie_sv_pct = THIS team's own goalie save_pct (who opposes incoming shots).
+    # poisson.run uses: lam_home = home.shots * (1 - away.opp_goalie_sv_pct)
+    # → away.opp_goalie_sv_pct must be the away goalie's save_pct (home shoots at away goalie).
+    home_inputs = TeamInputs(
+        name=home.team,
+        shots_for_pg=home.shot_rate_60 * cal.team_goal_multiplier,
+        opp_goalie_sv_pct=home.save_pct,
+    )
+    away_inputs = TeamInputs(
+        name=away.team,
+        shots_for_pg=away.shot_rate_60 * cal.team_goal_multiplier,
+        opp_goalie_sv_pct=away.save_pct,
+    )
+    out: ModelOutput = poisson_run(home_inputs, away_inputs)
 
     return PoissonResult(
         home_team=home.team,
         away_team=away.team,
-        home_win_prob=round(home_win, 4),
-        draw_prob=round(draw, 4),
-        away_win_prob=round(away_win, 4),
-        expected_home_goals=round(lambda_home, 3),
-        expected_away_goals=round(lambda_away, 3),
-        expected_total=round(lambda_home + lambda_away, 3),
+        home_win_prob=round(out.p_home_win / 100, 4),
+        draw_prob=round(out.p_ot / 100, 4),
+        away_win_prob=round(out.p_away_win / 100, 4),
+        expected_home_goals=out.lambda_home,
+        expected_away_goals=out.lambda_away,
+        expected_total=out.expected_total,
         calibration_version=cal.version,
     )
-
-
-def _estimate_lambda(attacking: TeamStats, defending: TeamStats, multiplier: float) -> float:
-    raw = (
-        (attacking.xgf_per_game / _LEAGUE_AVG_XGF)
-        * (defending.xga_per_game / _LEAGUE_AVG_XGF)
-        * _LEAGUE_AVG_XGF
-    )
-    return max(0.1, raw * multiplier)
